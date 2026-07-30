@@ -1,7 +1,7 @@
-# ⚙️ MARK L (50)
-### The Ultimate Cross-Platform Personal AI Assistant — By FatihMakes
+# ⚙️ Dominus Assistant (Mark L)
+### The Ultimate Cross-Platform Personal AI Assistant for Dominus-OS — By lvstants
 
-> 📺 **[Watch the full setup video on YouTube](https://www.youtube.com/@FatihMakes)**
+> 📺 **[Watch the repository updates on GitHub](https://github.com/lvstants03/Dominous-assiants)**
 
 A real-time voice AI that can hear, see, understand, and control your computer — on any OS. Supports Windows, macOS, and Linux. Built on the Gemini Live API for native audio streaming, delivering zero subscriptions and total digital autonomy.
 
@@ -9,7 +9,7 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ## ✨ Overview
 
-MARK L is where the assistant stops being a tool and starts being a presence. It remembers yesterday's conversation, watches the topics you care about, and speaks first when it has something worth saying. The goal of this build was continuity — JARVIS should feel like it never fully left, even after you close it.
+Dominus Assistant (codename Mark L) is where the assistant stops being a tool and starts being a presence. It remembers yesterday's conversation, watches the topics you care about, and speaks first when it has something worth saying. The goal of this build was continuity — JARVIS should feel like it never fully left, even after you close it.
 
 It's not just an assistant — it's an extension of your digital life.
 
@@ -96,8 +96,8 @@ News queries now run Gemini Grounded Search and DuckDuckGo news simultaneously i
 ## ⚡ Quick Start
 
 ```bash
-git clone https://github.com/FatihMakes/Mark-L.git
-cd Mark-L
+git clone https://github.com/lvstants03/Dominous-assiants.git
+cd dominus-assistant
 pip install -r requirements.txt
 python main.py
 ```
@@ -120,7 +120,7 @@ python main.py
 ## 🗂️ Project Structure
 
 ```
-Mark L/
+dominus-assistant/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, tool dispatch
 ├── ui.py                     # PyQt6 HUD — waveform, log panel, interrupt button, camera feed
 ├── setup.py                  # First-run configuration wizard
@@ -145,6 +145,12 @@ Mark L/
 │   ├── code_helper.py        # Code review and generation
 │   ├── dev_agent.py          # Developer task agent
 │   └── desktop.py            # Desktop and taskbar control
+├── dashboard/
+│   ├── server.py             # FastAPI web server for remote control dashboard
+│   └── static/
+│       ├── app.html          # Remote dashboard UI
+│       ├── login.html        # QR code login screen
+│       └── crypto-js.min.js  # QR pairing encryption helper
 ├── memory/
 │   ├── memory_manager.py     # Load/save long_term.json — sessions, monitors, identity
 │   └── long_term.json        # Persistent store: identity, preferences, projects, sessions, monitors
@@ -170,5 +176,4 @@ Engineered by a developer building a real-world JARVIS-style assistant.
 
 | Platform | Link |
 | --- | --- |
-| YouTube | [@FatihMakes](https://www.youtube.com/@FatihMakes) |
-| Instagram | [@fatihmakes](https://www.instagram.com/fatihmakes) |
+| GitHub | [@lvstants03](https://github.com/lvstants03) |

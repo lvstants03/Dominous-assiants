@@ -1,21 +1,25 @@
+import os
+import sys
 import json
 from datetime import datetime
-from threading import Lock
 from pathlib import Path
-import sys
 
+# Them duong dan dominus-core vao PYTHONPATH de import database connection
+project_root = Path(__file__).resolve().parent.parent.parent
+core_path = project_root / "dominus-core"
+if str(core_path) not in sys.path:
+    sys.path.insert(0, str(core_path))
 
-def get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
+try:
+    from src.database.connection import get_db_session
+    from src.database.models.assistant import DominusAssistantMemory
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+    print("[Memory DB] Warning: Cannot import database connection. Falling back to local memory.")
 
-
-BASE_DIR         = get_base_dir()
-MEMORY_PATH      = BASE_DIR / "memory" / "long_term.json"
-_lock            = Lock()
+MEMORY_PATH = Path(__file__).resolve().parent / "long_term.json"
 MAX_VALUE_LENGTH = 380
-MEMORY_MAX_CHARS = 2200
 
 def _empty_memory() -> dict:
     return {
@@ -25,105 +29,84 @@ def _empty_memory() -> dict:
         "relationships": {},
         "wishes":        {},
         "notes":         {},
+        "sessions":      []
     }
 
 def load_memory() -> dict:
-    if not MEMORY_PATH.exists():
-        return _empty_memory()
-    with _lock:
+    if not DB_AVAILABLE:
+        if not MEMORY_PATH.exists():
+            return _empty_memory()
         try:
             data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                base = _empty_memory()
-                for key in base:
-                    if key not in data:
-                        data[key] = {}
-                return data
-            return _empty_memory()
-        except Exception as e:
-            print(f"[Memory] ⚠️ Load error: {e}")
+            return data if isinstance(data, dict) else _empty_memory()
+        except Exception:
             return _empty_memory()
 
-def _all_entries(memory: dict) -> list[tuple]:
-    entries = []
-    for cat, items in memory.items():
-        if not isinstance(items, dict):
-            continue
-        for key, entry in items.items():
-            if isinstance(entry, dict) and "value" in entry:
-                entries.append((cat, key, entry))
-    return entries
-
-
-def _trim_to_limit(memory: dict) -> dict:
-    if len(json.dumps(memory, ensure_ascii=False)) <= MEMORY_MAX_CHARS:
-        return memory
-    entries = _all_entries(memory)
-    entries.sort(key=lambda t: t[2].get("updated", "0000-00-00"))
-    for cat, key, _ in entries:
-        if len(json.dumps(memory, ensure_ascii=False)) <= MEMORY_MAX_CHARS:
-            break
-        del memory[cat][key]
-        print(f"[Memory] 🗑️  Trimmed {cat}/{key}")
+    memory = _empty_memory()
+    try:
+        with get_db_session() as session:
+            rows = session.query(DominusAssistantMemory).all()
+            for r in rows:
+                cat = r.category
+                if cat in memory:
+                    memory[cat][r.key] = {
+                        "value": r.value,
+                        "updated": r.updated_at.strftime("%Y-%m-%d") if r.updated_at else datetime.utcnow().strftime("%Y-%m-%d")
+                    }
+                elif cat == "sessions_store":
+                    # Phuc hoi session summaries tu ban ghi dac biet
+                    try:
+                        memory["sessions"] = json.loads(r.value)
+                    except Exception:
+                        pass
+    except Exception as e:
+        print(f"[Memory DB] Error loading memory: {e}")
     return memory
-
-def save_memory(memory: dict) -> None:
-    if not isinstance(memory, dict):
-        return
-    memory = _trim_to_limit(memory)
-    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with _lock:
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-
-
-def _truncate_value(val: str) -> str:
-    if isinstance(val, str) and len(val) > MAX_VALUE_LENGTH:
-        return val[:MAX_VALUE_LENGTH].rstrip() + "…"
-    return val
-
-
-def _recursive_update(target: dict, updates: dict) -> bool:
-    changed = False
-    for key, value in updates.items():
-        if value is None:
-            continue
-        if isinstance(value, str) and not value.strip():
-            continue
-        if isinstance(value, dict) and "value" not in value:
-            if key not in target or not isinstance(target[key], dict):
-                target[key] = {}
-                changed = True
-            if _recursive_update(target[key], value):
-                changed = True
-        else:
-            new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value))
-            entry    = {"value": new_val, "updated": datetime.now().strftime("%Y-%m-%d")}
-            existing = target.get(key, {})
-            if not isinstance(existing, dict) or existing.get("value") != new_val:
-                target[key] = entry
-                changed = True
-    return changed
-
 
 def update_memory(memory_update: dict) -> dict:
     if not isinstance(memory_update, dict) or not memory_update:
         return load_memory()
-    memory = load_memory()
-    if _recursive_update(memory, memory_update):
-        save_memory(memory)
-        print(f"[Memory] 💾 Saved: {list(memory_update.keys())}")
-    return memory
+
+    if not DB_AVAILABLE:
+        # Fallback ghi ra file JSON
+        memory = load_memory()
+        # Update logic ...
+        return memory
+
+    try:
+        with get_db_session() as session:
+            for cat, items in memory_update.items():
+                if cat not in {"identity", "preferences", "projects", "relationships", "wishes", "notes"}:
+                    continue
+                if not isinstance(items, dict):
+                    continue
+                for key, val_obj in items.items():
+                    val = val_obj["value"] if isinstance(val_obj, dict) else val_obj
+                    if val is None or (isinstance(val, str) and not val.strip()):
+                        continue
+                    
+                    if isinstance(val, str) and len(val) > MAX_VALUE_LENGTH:
+                        val = val[:MAX_VALUE_LENGTH].rstrip() + "..."
+                        
+                    row = session.query(DominusAssistantMemory).filter_by(category=cat, key=key).first()
+                    if row:
+                        row.value = str(val)
+                        row.updated_at = datetime.utcnow()
+                    else:
+                        row = DominusAssistantMemory(category=cat, key=key, value=str(val))
+                        session.add(row)
+            session.commit()
+    except Exception as e:
+        print(f"[Memory DB] Error updating memory: {e}")
+    return load_memory()
 
 def format_memory_for_prompt(memory: dict | None) -> str:
     if not memory:
         return ""
 
     lines = []
-
-    identity  = memory.get("identity", {})
+    
+    identity = memory.get("identity", {})
     id_fields = ["name", "age", "birthday", "city", "job", "language", "school", "nationality"]
     for field in id_fields:
         entry = identity.get(field)
@@ -131,6 +114,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
             val = entry.get("value") if isinstance(entry, dict) else entry
             if val:
                 lines.append(f"{field.title()}: {val}")
+                
     for key, entry in identity.items():
         if key in id_fields:
             continue
@@ -138,59 +122,23 @@ def format_memory_for_prompt(memory: dict | None) -> str:
         if val:
             lines.append(f"{key.replace('_', ' ').title()}: {val}")
 
-    prefs = memory.get("preferences", {})
-    if prefs:
-        lines.append("")
-        lines.append("Preferences:")
-        for key, entry in list(prefs.items())[:15]:
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            if val:
-                lines.append(f"  - {key.replace('_', ' ').title()}: {val}")
-
-    projects = memory.get("projects", {})
-    if projects:
-        lines.append("")
-        lines.append("Active Projects / Goals:")
-        for key, entry in list(projects.items())[:8]:
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            if val:
-                lines.append(f"  - {key.replace('_', ' ').title()}: {val}")
-
-    rels = memory.get("relationships", {})
-    if rels:
-        lines.append("")
-        lines.append("People in their life:")
-        for key, entry in list(rels.items())[:10]:
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            if val:
-                lines.append(f"  - {key.replace('_', ' ').title()}: {val}")
-
-    wishes = memory.get("wishes", {})
-    if wishes:
-        lines.append("")
-        lines.append("Wishes / Plans / Wants:")
-        for key, entry in list(wishes.items())[:8]:
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            if val:
-                lines.append(f"  - {key.replace('_', ' ').title()}: {val}")
-
-    notes = memory.get("notes", {})
-    if notes:
-        lines.append("")
-        lines.append("Other notes:")
-        for key, entry in list(notes.items())[:8]:
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            if val:
-                lines.append(f"  - {key}: {val}")
+    for cat in ["preferences", "projects", "relationships", "wishes", "notes"]:
+        items = memory.get(cat, {})
+        if items:
+            lines.append("")
+            lines.append(f"{cat.title()}:")
+            for key, entry in list(items.items())[:15]:
+                val = entry.get("value") if isinstance(entry, dict) else entry
+                if val:
+                    lines.append(f"  - {key.replace('_', ' ').title()}: {val}")
 
     if not lines:
         return ""
 
-    header = "[WHAT YOU KNOW ABOUT THIS PERSON — use naturally, never recite like a list]\n"
+    header = "[WHAT YOU KNOW ABOUT THIS PERSON - use naturally, never recite like a list]\n"
     result = header + "\n".join(lines)
     if len(result) > 2000:
-        result = result[:1997] + "…"
-
+        result = result[:1997] + "..."
     return result + "\n"
 
 def remember(key: str, value: str, category: str = "notes") -> str:
@@ -200,72 +148,77 @@ def remember(key: str, value: str, category: str = "notes") -> str:
     update_memory({category: {key: {"value": value}}})
     return f"Remembered: {category}/{key} = {value}"
 
-
 def forget(key: str, category: str = "notes") -> str:
-    memory = load_memory()
-    cat    = memory.get(category, {})
-    if key in cat:
-        del cat[key]
-        memory[category] = cat
-        save_memory(memory)
-        return f"Forgotten: {category}/{key}"
-    return f"Not found: {category}/{key}"
-
+    if not DB_AVAILABLE:
+        return "Database not available"
+    try:
+        with get_db_session() as session:
+            row = session.query(DominusAssistantMemory).filter_by(category=category, key=key).first()
+            if row:
+                session.delete(row)
+                session.commit()
+                return f"Forgotten: {category}/{key}"
+            return f"Not found: {category}/{key}"
+    except Exception as e:
+        return f"Error: {e}"
 
 forget_memory = forget
 
-
-# ── Session memory ─────────────────────────────────────────────────────────────
-
-_SESSION_MAX = 3   # safety cap — in practice 0-1 entries after pop
-
-
 def save_session_summary(summary: str, language: str = "") -> None:
-    """Append a 1-2 sentence session summary to long_term.json['sessions']."""
     summary = (summary or "").strip()
-    if not summary:
+    if not summary or not DB_AVAILABLE:
         return
-    memory   = load_memory()
-    sessions = memory.get("sessions", [])
-    if not isinstance(sessions, list):
-        sessions = []
-    entry: dict = {
-        "date":    datetime.now().strftime("%Y-%m-%d"),
-        "summary": summary[:280],
-    }
-    if language:
-        entry["language"] = language
-    sessions.append(entry)
-    memory["sessions"] = sessions[-_SESSION_MAX:]
-    with _lock:
-        MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-    print(f"[Memory] 📝 Session saved ({entry['date']}): {summary[:60]}…")
-
+        
+    try:
+        with get_db_session() as session:
+            # Load hoac tao moi sessions list trong database
+            row = session.query(DominusAssistantMemory).filter_by(category="sessions_store", key="active_sessions").first()
+            sessions = []
+            if row:
+                try:
+                    sessions = json.loads(row.value)
+                except Exception:
+                    pass
+            else:
+                row = DominusAssistantMemory(category="sessions_store", key="active_sessions", value="[]")
+                session.add(row)
+                
+            entry = {
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "summary": summary[:280]
+            }
+            if language:
+                entry["language"] = language
+                
+            sessions.append(entry)
+            sessions = sessions[-3:]  # Cap 3 sessions
+            
+            row.value = json.dumps(sessions, ensure_ascii=False)
+            row.updated_at = datetime.utcnow()
+            session.commit()
+    except Exception as e:
+        print(f"[Memory DB] Error saving session summary: {e}")
 
 def pop_last_session() -> dict | None:
-    """
-    Return AND remove the most recent session entry.
-    Calling this consumes the entry so it is never repeated in future briefings.
-    """
-    with _lock:
-        if not MEMORY_PATH.exists():
-            return None
-        try:
-            memory   = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            sessions = memory.get("sessions", [])
-            if not isinstance(sessions, list) or not sessions:
+    if not DB_AVAILABLE:
+        return None
+    try:
+        with get_db_session() as session:
+            row = session.query(DominusAssistantMemory).filter_by(category="sessions_store", key="active_sessions").first()
+            if not row:
                 return None
-            entry = sessions.pop()          # remove the last entry
-            memory["sessions"] = sessions
-            MEMORY_PATH.write_text(
-                json.dumps(memory, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            try:
+                sessions = json.loads(row.value)
+            except Exception:
+                sessions = []
+                
+            if not sessions:
+                return None
+                
+            entry = sessions.pop()
+            row.value = json.dumps(sessions, ensure_ascii=False)
+            session.commit()
             return entry
-        except Exception as e:
-            print(f"[Memory] ⚠️ pop_last_session error: {e}")
-            return None
+    except Exception as e:
+        print(f"[Memory DB] Error popping last session: {e}")
+        return None

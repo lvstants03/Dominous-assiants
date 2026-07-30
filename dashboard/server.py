@@ -37,7 +37,7 @@ except Exception:
 
 BASE_DIR    = Path(__file__).resolve().parent.parent
 STATIC_DIR  = Path(__file__).parent / "static"
-PORT        = 8000
+PORT        = 8085
 MAX_UPLOAD_MB = 500
 
 

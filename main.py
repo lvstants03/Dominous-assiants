@@ -1,3 +1,10 @@
+import os
+os.environ["PYTHONWARNINGS"] = "ignore"
+import warnings
+def _no_warn(*a, **kw): pass
+warnings.showwarning = _no_warn
+warnings.filterwarnings("ignore")
+
 import platform as _platform
 import subprocess as _subprocess
 
@@ -28,7 +35,7 @@ from pathlib import Path
 import sounddevice as sd
 from google import genai
 from google.genai import types
-from ui import JarvisUI
+from ui import DominusUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -76,8 +83,21 @@ RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    try:
+        from src.database.connection import get_db_session
+        from src.database.models.assistant import DominusAssistantConfig
+        with get_db_session() as session:
+            cfg = session.query(DominusAssistantConfig).first()
+            if cfg and cfg.gemini_api_key:
+                return cfg.gemini_api_key
+    except Exception as e:
+        print(f"[Core Config] Error loading key from DB: {e}")
+        
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)["gemini_api_key"]
+    except Exception:
+        return ""
 
 
 def _load_system_prompt() -> str:
@@ -85,7 +105,7 @@ def _load_system_prompt() -> str:
         return PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
         return (
-            "You are JARVIS, Tony Stark's AI assistant. "
+            "You are DOMINUS, Tony Stark's AI assistant. "
             "Be concise, direct, and always use the provided tools to complete tasks. "
             "Never simulate or guess results — always call the appropriate tool."
         )
@@ -415,7 +435,7 @@ TOOL_DECLARATIONS = [
         "name": "manage_monitor",
         "description": (
             "Add, remove, or list background monitoring topics. "
-            "JARVIS checks these topics once a day and alerts the user when there is a new development. "
+            "DOMINUS checks these topics once a day and alerts the user when there is a new development. "
             "Use 'add' when the user says 'monitor X', 'track X', 'follow X'. "
             "Use 'remove' when the user says 'stop monitoring X'. "
             "Use 'list' when the user asks what is being monitored. "
@@ -441,7 +461,7 @@ TOOL_DECLARATIONS = [
         "description": (
             "Shuts down the assistant completely. "
             "Call this when the user expresses intent to end the conversation, "
-            "close the assistant, say goodbye, or stop Jarvis. "
+            "close the assistant, say goodbye, or stop Dominus. "
             "The user can say this in ANY language."
         ),
         "parameters": {
@@ -540,21 +560,74 @@ TOOL_DECLARATIONS = [
                     )
                 },
                 "key":   {"type": "STRING", "description": "Short snake_case key (e.g. name, favorite_food, sister_name)"},
-                "value": {"type": "STRING", "description": "Concise value in English (e.g. Fatih, pizza, older sister)"},
+                "value": {"type": "STRING", "description": "Concise value in English (e.g. lvstants, pizza, older sister)"},
             },
             "required": ["category", "key", "value"]
         }
     },
+    {
+        "name": "change_assistant_voice",
+        "description": "Changes the voice style of the assistant (Charon, Puck, Kore, Fenrir, Aoede).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "voice_name": {"type": "STRING", "description": "Name of the voice: Charon | Puck | Kore | Fenrir | Aoede"}
+            },
+            "required": ["voice_name"]
+        }
+    },
+    {
+        "name": "manage_child_service",
+        "description": "Starts, stops or restarts child services of Dominus (markov_brain or backend).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "service_name": {"type": "STRING", "description": "Service name: markov_brain | backend"},
+                "action": {"type": "STRING", "description": "Action: start | stop | restart"}
+            },
+            "required": ["service_name", "action"]
+        }
+    },
+    {
+        "name": "get_markov_predictions",
+        "description": "Gets latest probability predictions from MarkovBrain lottery analyzer.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "limit": {"type": "INTEGER", "description": "Number of predictions to get (default 5)"}
+            }
+        }
+    },
+    {
+        "name": "get_dominus_balance",
+        "description": "Retrieves the current transaction wallet balance (real and demo).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {}
+        }
+    },
+    {
+        "name": "set_dominus_lottery_config",
+        "description": "Sets the active lottery game ID and code for Markov analyzer.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "lottery_id": {"type": "INTEGER", "description": "Game ID (e.g. 45)"},
+                "lottery_code": {"type": "STRING", "description": "Game Code (e.g. 'pmb5p')"}
+            },
+            "required": ["lottery_id", "lottery_code"]
+        }
+    }
 ]
 
 # --- Plugin system ---
 
 
-class JarvisLive:
+class DominusLive:
 
-    def __init__(self, ui: JarvisUI):
+    def __init__(self, ui: DominusUI):
         self.ui             = ui
-        self._asst_name     = "JARVIS"   # updated each session from config
+        self._asst_name     = "DOMINUS"   # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
         self.out_queue            = None
@@ -612,7 +685,7 @@ class JarvisLive:
             self.ui.set_state("LISTENING")
 
     def interrupt(self) -> None:
-        """Stop JARVIS mid-speech: drain queued audio and open mic immediately."""
+        """Stop DOMINUS mid-speech: drain queued audio and open mic immediately."""
         self._interrupted = True
         q = self.audio_in_queue
         if q:
@@ -624,7 +697,7 @@ class JarvisLive:
                 except Exception:
                     break
             if drained:
-                print(f"[JARVIS] ✋ Interrupted — {drained} audio chunks discarded")
+                print(f"[DOMINUS] ✋ Interrupted — {drained} audio chunks discarded")
         self.set_speaking(False)
         if self._turn_done_event:
             self._turn_done_event.clear()
@@ -649,32 +722,48 @@ class JarvisLive:
     def _build_config(self) -> types.LiveConnectConfig:
         from datetime import datetime
 
-        # Load customization from config
+        _voice_name = "Charon"
+        # Load customization from config DB
         try:
-            _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
-            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
-            _user_name = (_cfg.get("user_name") or "").strip()
-        except Exception:
-            self._asst_name = "JARVIS"
-            _user_name = ""
+            from src.database.connection import get_db_session
+            from src.database.models.assistant import DominusAssistantConfig
+            with get_db_session() as session:
+                cfg = session.query(DominusAssistantConfig).first()
+                if cfg:
+                    self._asst_name = (cfg.assistant_name or "DOMINUS").strip()
+                    _user_name = (cfg.user_name or "").strip()
+                    _voice_name = (cfg.assistant_voice or "Charon").strip()
+                else:
+                    self._asst_name = "DOMINUS"
+                    _user_name = "Sir"
+        except Exception as e:
+            print(f"[Config DB] Error loading config: {e}")
+            try:
+                _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
+                self._asst_name = (_cfg.get("assistant_name") or "DOMINUS").strip()
+                _user_name = (_cfg.get("user_name") or "").strip()
+                _voice_name = (_cfg.get("assistant_voice") or "Charon").strip()
+            except Exception:
+                self._asst_name = "DOMINUS"
+                _user_name = ""
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
         sys_prompt = _load_system_prompt()
 
         now      = datetime.now()
-        time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
+        time_str = now.strftime("%A, %B %d, %Y - %I:%M %p")
         time_ctx = (
             f"[CURRENT DATE & TIME]\n"
             f"Right now it is: {time_str}\n"
             f"Use this to calculate exact times for reminders.\n\n"
         )
 
-        # Identity injection — overrides any hardcoded name in prompt.txt
+        # Identity injection - overrides any hardcoded name in prompt.txt
         _addr = (f"ADDRESS: Always call the user '{_user_name}'."
                  if _user_name
-                 else "ADDRESS: When speaking Turkish → always say \"efendim\". "
-                      "When speaking English → say \"sir\". Never mix languages.")
+                 else "ADDRESS: When speaking Turkish -> always say \"efendim\". "
+                      "When speaking English -> say \"sir\". Never mix languages.")
         identity_ctx = (
             f"[IDENTITY]\n"
             f"Your name is {self._asst_name}. "
@@ -697,7 +786,7 @@ class JarvisLive:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Charon"
+                        voice_name=_voice_name
                     )
                 )
             ),
@@ -707,7 +796,7 @@ class JarvisLive:
         name = fc.name
         args = dict(fc.args or {})
 
-        print(f"[JARVIS] 🔧 {name}  {args}")
+        print(f"[DOMINUS] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
 
         if name == "save_memory":
@@ -723,6 +812,86 @@ class JarvisLive:
                 id=fc.id, name=name,
                 response={"result": "ok", "silent": True}
             )
+
+        if name == "change_assistant_voice":
+            voice = args.get("voice_name", "Charon")
+            try:
+                from src.database.connection import get_db_session
+                from src.database.models.assistant import DominusAssistantConfig
+                with get_db_session() as session:
+                    cfg = session.query(DominusAssistantConfig).first()
+                    if not cfg:
+                        cfg = DominusAssistantConfig()
+                        session.add(cfg)
+                    cfg.assistant_voice = voice
+                    session.commit()
+                if self.session:
+                    asyncio.create_task(self.session.close())
+                result = f"Voice updated to {voice} in database. Reconnecting session."
+            except Exception as e:
+                result = f"Error changing voice: {e}"
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
+
+        if name == "manage_child_service":
+            service = args.get("service_name")
+            action = args.get("action")
+            if self.ui and hasattr(self.ui, "orchestrator"):
+                self.ui.write_log(f"SYS: Voice service command - {action.upper()} {service}")
+                if action == "restart":
+                    self.ui.orchestrator.restart_service(service)
+                elif action == "stop":
+                    self.ui.orchestrator.stop_service(service)
+                elif action == "start":
+                    self.ui.orchestrator.start_service(service)
+                result = f"Service {service} commanded to {action}."
+            else:
+                result = "Orchestrator not available."
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
+
+        if name == "get_markov_predictions":
+            import httpx
+            limit = args.get("limit", 5)
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.get(f"http://localhost:8000/api/predictions?limit={limit}")
+                    result = res.text if res.status_code == 200 else f"Markov returned error code {res.status_code}"
+            except Exception as e:
+                result = f"Failed to connect to Markov: {e}"
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
+
+        if name == "get_dominus_balance":
+            import httpx
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.get("http://localhost:8000/api/balance")
+                    result = res.text if res.status_code == 200 else f"Markov returned error code {res.status_code}"
+            except Exception as e:
+                result = f"Failed to connect to Markov: {e}"
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
+
+        if name == "set_dominus_lottery_config":
+            import httpx
+            payload = {
+                "lottery_id": int(args.get("lottery_id", 45)),
+                "lottery_code": args.get("lottery_code", "pmb5p")
+            }
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post("http://localhost:8000/api/config-lottery", json=payload)
+                    result = res.text if res.status_code == 200 else f"Markov returned error code {res.status_code}"
+            except Exception as e:
+                result = f"Failed to configure Markov lottery: {e}"
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
 
         loop   = asyncio.get_event_loop()
         result = "Done."
@@ -882,7 +1051,7 @@ class JarvisLive:
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
 
-        print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
+        print(f"[DOMINUS] 📤 {name} → {str(result)[:80]}")
         return types.FunctionResponse(
             id=fc.id, name=name,
             response={"result": result}
@@ -894,7 +1063,7 @@ class JarvisLive:
             await self.session.send_realtime_input(media=msg)
 
     async def _listen_audio(self):
-        print("[JARVIS] 🎤 Mic started")
+        print("[DOMINUS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
 
         def callback(indata, frames, time_info, status):
@@ -915,15 +1084,15 @@ class JarvisLive:
                 blocksize=CHUNK_SIZE,
                 callback=callback,
             ):
-                print("[JARVIS] 🎤 Mic stream open")
+                print("[DOMINUS] 🎤 Mic stream open")
                 while True:
                     await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"[JARVIS] ❌ Mic: {e}")
+            print(f"[DOMINUS] ❌ Mic: {e}")
             raise
 
     async def _receive_audio(self):
-        print("[JARVIS] 👂 Recv started")
+        print("[DOMINUS] 👂 Recv started")
         out_buf, in_buf = [], []
 
         try:
@@ -1009,7 +1178,7 @@ class JarvisLive:
                                 )
                                 # Mark next turn_complete behaviour depending on angle
                                 if self._vision_cam_active:
-                                    # Camera: keep busy until JARVIS finishes speaking the answer
+                                    # Camera: keep busy until DOMINUS finishes speaking the answer
                                     self._vision_cam_active    = False
                                     self._vision_close_pending = True
                                 else:
@@ -1027,19 +1196,19 @@ class JarvisLive:
                     if response.tool_call:
                         fn_responses = []
                         for fc in response.tool_call.function_calls:
-                            print(f"[JARVIS] 📞 {fc.name}")
+                            print(f"[DOMINUS] 📞 {fc.name}")
                             fr = await self._execute_tool(fc)
                             fn_responses.append(fr)
                         await self.session.send_tool_response(
                             function_responses=fn_responses
                         )
         except Exception as e:
-            print(f"[JARVIS] ❌ Recv: {e}")
+            print(f"[DOMINUS] ❌ Recv: {e}")
             traceback.print_exc()
             raise
 
     async def _play_audio(self):
-        print("[JARVIS] 🔊 Play started")
+        print("[DOMINUS] 🔊 Play started")
 
         stream = sd.RawOutputStream(
             samplerate=RECEIVE_SAMPLE_RATE,
@@ -1083,7 +1252,7 @@ class JarvisLive:
                 except (RuntimeError, asyncio.CancelledError):
                     break   # executor shutting down — exit cleanly
         except Exception as e:
-            print(f"[JARVIS] ❌ Play: {e}")
+            print(f"[DOMINUS] ❌ Play: {e}")
             raise
         finally:
             self.set_speaking(False)
@@ -1274,7 +1443,7 @@ class JarvisLive:
         await asyncio.sleep(300)          # wait 5 min after startup before first check
         while True:
             if self.session:
-                # Don't interrupt if user spoke recently or JARVIS is mid-sentence
+                # Don't interrupt if user spoke recently or DOMINUS is mid-sentence
                 with self._speaking_lock:
                     speaking = self._is_speaking
                 recent_speech = (time.monotonic() - self._last_user_speech) < 30
@@ -1414,7 +1583,7 @@ class JarvisLive:
 
         while True:
             try:
-                print("[JARVIS] Connecting...")
+                print("[DOMINUS] Connecting...")
                 self.ui.set_state("THINKING")
                 config = self._build_config()
 
@@ -1441,9 +1610,9 @@ class JarvisLive:
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
 
-                    print("[JARVIS] Connected.")
+                    print("[DOMINUS] Connected.")
                     self.ui.set_state("LISTENING")
-                    self.ui.write_log("SYS: JARVIS online.")
+                    self.ui.write_log("SYS: DOMINUS online.")
 
                     if self._dashboard:
                         await self._dashboard.broadcast({"type": "status", "state": "active"})
@@ -1474,7 +1643,7 @@ class JarvisLive:
                 # exception escape the while-loop and causing asyncio.run() to
                 # start shutdown — resulting in "executor after shutdown" errors).
                 err_str = str(e)
-                print(f"[JARVIS] Error ({type(e).__name__}): {e}")
+                print(f"[DOMINUS] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
                 # Invalid API key — stop hammering the API, prompt re-configuration
@@ -1484,7 +1653,7 @@ class JarvisLive:
                     self.ui.prompt_reconfig()
                     while not self.ui._win._ready:
                         await asyncio.sleep(1)
-                    print("[JARVIS] New API key saved — reconnecting...")
+                    print("[DOMINUS] New API key saved — reconnecting...")
                     _conn_backoff = 3
                     continue
 
@@ -1515,15 +1684,15 @@ class JarvisLive:
                 await self._dashboard.broadcast({"type": "status", "state": "sleeping"})
 
             delay = getattr(self, "_conn_backoff", 3)
-            print(f"[JARVIS] Reconnecting in {delay}s...")
+            print(f"[DOMINUS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 
 def main():
-    ui = JarvisUI("face.png")
+    ui = DominusUI("face.png")
 
     def runner():
         ui.wait_for_api_key()
-        jarvis = JarvisLive(ui)
+        jarvis = DominusLive(ui)
         try:
             asyncio.run(jarvis.run())
         except KeyboardInterrupt:
