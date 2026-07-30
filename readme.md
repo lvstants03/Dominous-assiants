@@ -1,4 +1,4 @@
-# ⚙️ Dominus Assistant (Mark L)
+# ⚙️ Dominus Assistant (Dominus-1.1)
 ### The Ultimate Cross-Platform Personal AI Assistant for Dominus-OS — By lvstants
 
 > 📺 **[Watch the repository updates on GitHub](https://github.com/lvstants03/Dominous-assiants)**
@@ -9,7 +9,7 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ## ✨ Overview
 
-Dominus Assistant (codename Mark L) is where the assistant stops being a tool and starts being a presence. It remembers yesterday's conversation, watches the topics you care about, and speaks first when it has something worth saying. The goal of this build was continuity — JARVIS should feel like it never fully left, even after you close it.
+Dominus Assistant (codename Dominus-1.1) is where the assistant stops being a tool and starts being a presence. It remembers yesterday's conversation, watches the topics you care about, and speaks first when it has something worth saying. The goal of this build was continuity — Dominus-1.1 should feel like it never fully left, even after you close it.
 
 It's not just an assistant — it's an extension of your digital life.
 
@@ -51,22 +51,22 @@ It's not just an assistant — it's an extension of your digital life.
 
 ---
 
-## 🆕 What's New in Mark L
+## 🆕 What's New in Dominus-1.1
 
-### 🗓️ Session Memory — JARVIS Remembers Yesterday
-At the end of every session, JARVIS generates a 1-2 sentence summary of what was discussed and saves it to memory. The next morning, it's mentioned naturally in the briefing:
-> *"Good morning, sir — it's 09:15. Yesterday you were working on the Mark L background monitoring feature. Fetching today's headlines now."*
+### 🗓️ Session Memory — Dominus-1.1 Remembers Yesterday
+At the end of every session, Dominus-1.1 generates a 1-2 sentence summary of what was discussed and saves it to memory. The next morning, it's mentioned naturally in the briefing:
+> *"Good morning, sir — it's 09:15. Yesterday you were working on the Dominus-1.1 background monitoring feature. Fetching today's headlines now."*
 
 The summary is consumed immediately after use — it never repeats in future briefings and adds zero long-term bloat to memory.
 
-### 👁️‍🗨️ Background Monitoring — JARVIS Watches While You're Away
-Tell JARVIS to monitor any topic and it checks for new developments once a day using DuckDuckGo news. When a headline changes, it reports back naturally in your language:
+### 👁️‍🗨️ Background Monitoring — Dominus-1.1 Watches While You're Away
+Tell Dominus-1.1 to monitor any topic and it checks for new developments once a day using DuckDuckGo news. When a headline changes, it reports back naturally in your language:
 > *"Efendim, takip ettiğiniz yapay zeka haberlerinde bir gelişme var: Google yeni bir model duyurdu."*
 
-Fully opt-in — JARVIS monitors nothing without being explicitly asked. Crypto, financial, and trading topics are blocked at the code level regardless of what is requested. Same headline never triggers twice.
+Fully opt-in — Dominus-1.1 monitors nothing without being explicitly asked. Crypto, financial, and trading topics are blocked at the code level regardless of what is requested. Same headline never triggers twice.
 
 ### 🔔 Proactive System 2.0 — Context-Aware, Time-Aware, Non-Repetitive
-The proactive engine was rebuilt from the ground up. Instead of a generic check-in after 15 minutes of silence, JARVIS now:
+The proactive engine was rebuilt from the ground up. Instead of a generic check-in after 15 minutes of silence, Dominus-1.1 now:
 - Knows the **time of day** — morning tone differs from evening tone
 - Knows your **active projects** from memory and can ask how something is going
 - Knows your **monitored topics** and can bring one up naturally
@@ -75,20 +75,20 @@ The proactive engine was rebuilt from the ground up. Instead of a generic check-
 - Has a 20-minute cooldown (up from 10) — less intrusive, more meaningful
 
 ### 👁️ Instant Vision Acknowledgment — No More Silent Waiting
-When you ask JARVIS to look at your screen or camera, it no longer goes silent while processing. It immediately says something natural ("Looking at your screen now, sir" / "Ekrana bakıyorum efendim") while the capture runs. The actual analysis follows as the next response.
+When you ask Dominus-1.1 to look at your screen or camera, it no longer goes silent while processing. It immediately says something natural ("Looking at your screen now, sir" / "Ekrana bakıyorum efendim") while the capture runs. The actual analysis follows as the next response.
 
 ### 📰 Parallel News Search — First Result Wins
 News queries now run Gemini Grounded Search and DuckDuckGo news simultaneously in two threads. Whichever delivers a valid result first is used; the other is silently discarded. A Gemini 503 error no longer delays results — the DDG fallback is already running in parallel.
 
 ---
 
-## 🗺️ Mark Roadmap
+## 🗺️ Dominus Roadmap
 
-| Mark | Focus |
+| Version | Focus |
 |---|---|
 | **XLVIII** | Instant interrupt · parallel news · two-phase briefing · exponential backoff · vision cooldown |
 | **XLIX** | Auto-start · clipboard intelligence · assistant customization |
-| **L** | Session memory · background monitoring · proactive 2.0 · instant vision · parallel news search |
+| **Dominus-1.1 (Mark L)** | Session memory · background monitoring · proactive 2.0 · instant vision · parallel news search |
 | **LI+** | Plugin system · email · quiz mode · calorie counter · calendar |
 
 ---
@@ -171,8 +171,8 @@ Licensed under **[Creative Commons BY-NC 4.0](https://creativecommons.org/licens
 
 ## 👤 Connect with the Creator
 
-Engineered by a developer building a real-world JARVIS-style assistant.
-⭐ **Star the repository to support the journey to Mark 100.**
+Engineered by a developer building a real-world personal AI assistant.
+⭐ **Star the repository to support the journey to Dominus 100.**
 
 | Platform | Link |
 | --- | --- |
