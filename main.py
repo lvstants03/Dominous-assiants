@@ -796,7 +796,7 @@ class DominusLive:
         name = fc.name
         args = dict(fc.args or {})
 
-        print(f"[DOMINUS] 🔧 {name}  {args}")
+        print(f"[DOMINUS] [Tool] {name}  {args}")
         self.ui.set_state("THINKING")
 
         if name == "save_memory":
@@ -805,7 +805,7 @@ class DominusLive:
             value    = args.get("value", "")
             if key and value:
                 update_memory({category: {key: {"value": value}}})
-                print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+                print(f"[Memory] [Save] save_memory: {category}/{key} = {value}")
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
@@ -931,7 +931,7 @@ class DominusLive:
                 _cooldown = 4.0  # seconds — covers echo window after speaking ends
                 if self._vision_busy or (_now - self._vision_last_time) < _cooldown:
                     _wait = max(0, _cooldown - (_now - self._vision_last_time))
-                    print(f"[Vision] ⏳ Cooldown active ({_wait:.1f}s remaining) — ignoring duplicate call")
+                    print(f"[Vision] [Cooldown] Cooldown active ({_wait:.1f}s remaining) — ignoring duplicate call")
                     result = "Vision is still processing the previous request. I will not call this again."
                 else:
                     self._vision_busy      = True
@@ -942,11 +942,11 @@ class DominusLive:
                         img_b, mime_t = await loop.run_in_executor(None, _capture_camera)
                         self.ui.start_camera_stream()
                         self._vision_cam_active = True
-                        print(f"[Vision] 📷 Camera: {len(img_b):,} bytes")
+                        print(f"[Vision] [Camera] Camera: {len(img_b):,} bytes")
                         _stall = "camera"
                     else:
                         img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
-                        print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
+                        print(f"[Vision] [Screen] Screen: {len(img_b):,} bytes")
                         _stall = "screen"
                     self._pending_vision = (img_b, mime_t, user_text, angle)
                     result = (
@@ -1051,7 +1051,7 @@ class DominusLive:
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
 
-        print(f"[DOMINUS] 📤 {name} → {str(result)[:80]}")
+        print(f"[DOMINUS] [OUT] {name} -> {str(result)[:80]}")
         return types.FunctionResponse(
             id=fc.id, name=name,
             response={"result": result}
@@ -1063,7 +1063,7 @@ class DominusLive:
             await self.session.send_realtime_input(media=msg)
 
     async def _listen_audio(self):
-        print("[DOMINUS] 🎤 Mic started")
+        print("[DOMINUS] [Mic] Mic started")
         loop = asyncio.get_event_loop()
 
         def callback(indata, frames, time_info, status):
@@ -1084,15 +1084,15 @@ class DominusLive:
                 blocksize=CHUNK_SIZE,
                 callback=callback,
             ):
-                print("[DOMINUS] 🎤 Mic stream open")
+                print("[DOMINUS] [Mic] Mic stream open")
                 while True:
                     await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"[DOMINUS] ❌ Mic: {e}")
+            print(f"[DOMINUS] [Error] Mic: {e}")
             raise
 
     async def _receive_audio(self):
-        print("[DOMINUS] 👂 Recv started")
+        print("[DOMINUS] [Recv] Recv started")
         out_buf, in_buf = [], []
 
         try:
@@ -1203,12 +1203,12 @@ class DominusLive:
                             function_responses=fn_responses
                         )
         except Exception as e:
-            print(f"[DOMINUS] ❌ Recv: {e}")
+            print(f"[DOMINUS] [Error] Recv: {e}")
             traceback.print_exc()
             raise
 
     async def _play_audio(self):
-        print("[DOMINUS] 🔊 Play started")
+        print("[DOMINUS] [Play] Play started")
 
         stream = sd.RawOutputStream(
             samplerate=RECEIVE_SAMPLE_RATE,
