@@ -1,3 +1,12 @@
+import sys
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(errors="replace")
+except Exception:
+    pass
+
 import os
 os.environ["PYTHONWARNINGS"] = "ignore"
 import warnings
