@@ -35,7 +35,7 @@ from pathlib import Path
 import sounddevice as sd
 from google import genai
 from google.genai import types
-from ui import DominusUI
+from mock_ui import DominusUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -582,7 +582,7 @@ TOOL_DECLARATIONS = [
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "service_name": {"type": "STRING", "description": "Service name: markov_brain | backend"},
+                "service_name": {"type": "STRING", "description": "Service name: markov_brain | backend | frontend"},
                 "action": {"type": "STRING", "description": "Action: start | stop | restart"}
             },
             "required": ["service_name", "action"]
@@ -778,8 +778,8 @@ class DominusLive:
 
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            output_audio_transcription={},
-            input_audio_transcription={},
+            output_audio_transcription=types.AudioTranscriptionConfig(),
+            input_audio_transcription=types.AudioTranscriptionConfig(),
             system_instruction="\n".join(parts),
             tools=[{"function_declarations": TOOL_DECLARATIONS}],
             session_resumption=types.SessionResumptionConfig(),
@@ -1418,23 +1418,31 @@ class DominusLive:
 
     async def _run_system_monitor(self) -> None:
         """Background task: voice alerts when metrics exceed thresholds."""
-        while True:
-            await asyncio.sleep(10)
-            alert = await asyncio.to_thread(self._sys_monitor.check)
-            if not alert or not self.session:
-                continue
-            # Don't interrupt an active conversation
-            with self._speaking_lock:
-                speaking = self._is_speaking
-            if speaking or (time.monotonic() - self._last_user_speech) < 10:
-                continue
-            try:
-                await self.session.send_client_content(
-                    turns={"parts": [{"text": alert}]},
-                    turn_complete=True,
-                )
-            except Exception as e:
-                print(f"[Monitor] ⚠️ Could not send alert: {e}")
+        try:
+            while True:
+                await asyncio.sleep(10)
+                try:
+                    alert = await asyncio.to_thread(self._sys_monitor.check)
+                except RuntimeError as re:
+                    if "shutdown" in str(re) or "closed" in str(re):
+                        break
+                    raise
+                if not alert or not self.session:
+                    continue
+                # Don't interrupt an active conversation
+                with self._speaking_lock:
+                    speaking = self._is_speaking
+                if speaking or (time.monotonic() - self._last_user_speech) < 10:
+                    continue
+                try:
+                    await self.session.send_client_content(
+                        turns={"parts": [{"text": alert}]},
+                        turn_complete=True,
+                    )
+                except Exception as e:
+                    print(f"[Monitor] ⚠️ Could not send alert: {e}")
+        except asyncio.CancelledError:
+            pass
 
     # ── Background monitor ──────────────────────────────────────────────────────
 
